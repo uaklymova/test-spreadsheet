@@ -6,7 +6,7 @@ var logger = require('morgan');
 var spreadsheetRouter = require('./routes/spreadsheet');
 
 var app = express();
-console.log('here')
+
 // view engine setup
 app.use(express.static(path.join(__dirname, 'views')));
 app.use(express.static(__dirname + '/views'));
