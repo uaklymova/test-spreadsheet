@@ -2,25 +2,42 @@ var express = require('express');
 var router = express.Router();
 var sp = require('google-spreadsheet');
 var Promise = require('bluebird');
+var _ = require('lodash');
 const MAX_COL_COUNT = 50;
 const MAX_ROW_COUNT = 50;
 const HEADERS = ['email', 'firstname', 'lastname', 'location'];
 
 router.post('/', async function (req, res, next) {
   try {
-    //
-    function add(rows) {
+    function add(rows, toArray) {
       for (let i = 0; i < rows.length; i++) {
         let obj = {};
         obj.firstname = rows[i].firstname;
         obj.lastname = rows[i].lastname;
         obj.email = rows[i].email;
         obj.location = rows[i].location;
+        obj.phone = rows[i].phone;
 
-        allUsersArray.push(obj);
+        toArray.push(obj);
       }
     }
-
+    //used solution from https://stackoverflow.com/a/17999073
+    function mergeObjects(obj1, obj2) {
+      Object.keys(obj1).forEach(function(obj1Key) {
+          if (obj2[obj1Key] === undefined || obj2[obj1Key] === '') {
+            obj2[obj1Key] = obj1[obj1Key];
+          } else if (isObject(obj1[obj1Key]) && isObject(obj2[obj1Key])) {
+              mergeObjects(obj1[obj1Key], obj2[obj1Key]);
+          }
+      });
+  
+      function isObject(object) {
+          return Object.prototype.toString.call(object) === '[object Object]';
+      }
+  
+      return obj2;
+    }
+    
     let allUsersArray = [];
     let spreadsheetAsync = Promise.promisifyAll(new sp('1NO__2Gw1Z1L_egLy6VxIZstQRbjWKdKGuYdv3VKtul0'));
 
@@ -40,11 +57,17 @@ router.post('/', async function (req, res, next) {
     let sheetB = Promise.promisifyAll(info.worksheets[1]);
     let rowsA = await sheetA.getRowsAsync({});
     let rowsB = await sheetB.getRowsAsync({});
-    add(rowsA);
-    add(rowsB);
-    
-    let uniqueUsersArray = allUsersArray.filter((v, i, a) => a.findIndex((t) => (t.email === v.email && t.firstname === v.firstname && t.lastname === v.lastname)) === i)
-
+    add(rowsA, allUsersArray);
+    add(rowsB, allUsersArray);
+    let uniqueUsersArray = allUsersArray.filter((v, i, a) => {
+      let elIndex =a.findIndex((t) =>(t.email === v.email && t.firstname === v.firstname && t.lastname === v.lastname));
+      if(elIndex >= i) { return true;}
+     else {
+       mergeObjects(v,a[elIndex]);
+        return false;
+      }
+    } )
+   
     let opt = {
       title: 'C',
       headers: HEADERS
@@ -55,10 +78,10 @@ router.post('/', async function (req, res, next) {
       await spreadsheetAsync.addWorksheetAsync(opt);
 
     let rowsC = await sheetB.getRowsAsync({});
-    add(rowsC);
+    add(rowsC,allUsersArray);
 
     //clean and prepare to new data
-    if (needsClean) {
+     if (needsClean) {
       await sheetC.clearAsync()
       await sheetC.resizeAsync({
         rowCount: MAX_ROW_COUNT,
@@ -71,7 +94,6 @@ router.post('/', async function (req, res, next) {
     for (let i = 0; i < uniqueUsersArray.length; i++) {
       await sheetC.addRowAsync(uniqueUsersArray[i])
     }
-    
     //oops. redirects to not handled page /spreadsheet ¯\_(ツ)_/¯
     //@todo: handle it gracefully
     res.status(200).json({});
